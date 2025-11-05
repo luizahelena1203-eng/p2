@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Rastreador de Processos</title>
+</head>
+<body>
+    <h1>Rastreador de Andamentos Processuais</h1>
+    <form id="form">
+        <label>Número do processo:</label>
+        <input type="text" id="numero" required><br><br>
+        <label>Tribunal:</label>
+        <input type="text" id="tribunal" value="TJSP"><br><br>
+        <button type="submit">Consultar</button>
+    </form>
+    <div id="resultado"></div>
+
+    <script>
+        const form = document.getElementById('form');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const numero = document.getElementById('numero').value;
+            const tribunal = document.getElementById('tribunal').value;
+            const res = await fetch(`/api/consultar?numero=${numero}&tribunal=${tribunal}`);
+            const data = await res.json();
+            document.getElementById('resultado').innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        });
+    </script>
+</body>
+</html>
