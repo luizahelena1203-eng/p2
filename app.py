@@ -7,9 +7,11 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///processos.db'
 db.init_app(app)
 
-@app.before_first_request
+@app.before_request
 def create_tables():
-    db.create_all()
+    if not hasattr(app, '_db_created'):
+        db.create_all()
+        app._db_created = True
 
 @app.route('/')
 def home():
