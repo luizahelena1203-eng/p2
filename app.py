@@ -2,6 +2,10 @@ import streamlit as st
 import requests
 import pandas as pd
 import matplotlib.pyplot as plt
+import urllib3
+
+# desativa avisos de SSL (necessário para a API do STF)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.title("Consulta de Jurisprudência do STF")
 st.write("Aplicação que consulta decisões reais utilizando a API oficial de jurisprudência do STF.")
@@ -14,7 +18,8 @@ def buscar_stf(termo):
     params = {"palavra": termo}
 
     try:
-        response = requests.get(url, params=params, timeout=15)
+        # verify=False para evitar erro de certificado SSL
+        response = requests.get(url, params=params, timeout=20, verify=False)
         response.raise_for_status()
         data = response.json()
         return data.get("acordaos", [])
@@ -41,13 +46,14 @@ if st.button("Buscar"):
         else:
             st.success(f"{len(resultados)} resultados encontrados!")
 
-            # Exibir lista
-            for item in resultados[:10]:  # mostra só os 10 primeiros
+            # Exibir lista (somente os 10 primeiros)
+            for item in resultados[:10]:
                 st.markdown(f"""
-                ### {item.get('processo', 'Sem número')}
+                ### Processo: {item.get('processo', 'Não informado')}
                 **Relator:** {item.get('relator', 'Não informado')}  
-                **Data:** {item.get('dataJulgamento', 'Sem data')}  
-                **Ementa:** {item.get('ementa', 'Sem ementa')}
+                **Data do Julgamento:** {item.get('dataJulgamento', 'Sem data')}  
+                **Ementa:**  
+                {item.get('ementa', 'Sem ementa')}
                 ---
                 """)
 
@@ -72,4 +78,3 @@ if st.button("Buscar"):
             ax.set_title("Distribuição anual das decisões encontradas")
 
             st.pyplot(fig)
-
