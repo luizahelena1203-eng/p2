@@ -1,77 +1,75 @@
 import streamlit as st
 import requests
 import pandas as pd
+import matplotlib.pyplot as plt
 
-# ===========================
-# CONFIGURAÇÃO DA PÁGINA
-# ===========================
-st.set_page_config(page_title="Analisador de Processos", layout="centered")
-st.title("📄 Analisador Automático de Processos Jurídicos")
+st.title("Consulta de Jurisprudência do STF")
+st.write("Aplicação que consulta decisões reais utilizando a API oficial de jurisprudência do STF.")
 
-st.write("Cole o texto do processo e clique em **Analisar** para gerar um resumo automático e estatísticas.")
+# ------------------------------------------
+# Função para buscar jurisprudência no STF
+# ------------------------------------------
+def buscar_stf(termo):
+    url = "https://jurisprudencia.stf.jus.br/api/v1/acordaos"
+    params = {"palavra": termo}
 
-# ===========================
-# INPUT DO USUÁRIO
-# ===========================
-processo_texto = st.text_area("Texto do processo:", height=300)
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("acordaos", [])
+    except Exception as e:
+        st.error(f"Erro ao consultar a API do STF: {e}")
+        return []
 
-if st.button("Analisar"):
-    if not processo_texto.strip():
-        st.error("Por favor, cole o texto do processo.")
-        st.stop()
 
-    with st.spinner("Analisando..."):
+# ------------------------------------------
+# Interface
+# ------------------------------------------
+termo = st.text_input("Digite um tema para buscar no STF (ex: 'violência', 'tributário', 'dano moral'): ")
 
-        # ===========================
-        # CHAMADA À SUA API
-        # ===========================
-        try:
-            response = requests.post(
-                "http://localhost:8000/analisar",   # <<< SEU ENDPOINT FASTAPI
-                json={"texto": processo_texto}
-            )
-
-        except Exception as e:
-            st.error("Erro ao conectar com a API.")
-            st.exception(e)
-            st.stop()
-
-        if response.status_code != 200:
-            st.error("A API retornou um erro:")
-            st.write(response.text)
-            st.stop()
-
-        dados = response.json()
-
-    st.success("Análise concluída!")
-
-    # ===========================
-    # EXIBE RESULTADO PRINCIPAL
-    # ===========================
-    st.subheader("📌 Resumo do Processo")
-    st.write(dados.get("resumo", "Sem resumo."))
-
-    st.subheader("📊 Pontos Principais Detectados")
-    if "topicos" in dados and dados["topicos"]:
-        for t in dados["topicos"]:
-            st.markdown(f"- {t}")
+if st.button("Buscar"):
+    if not termo:
+        st.warning("Digite um termo de pesquisa.")
     else:
-        st.write("Nenhum tópico detectado.")
+        st.info("Buscando na API do STF...")
 
-    # ===========================
-    # GRÁFICO AUTOMÁTICO
-    # ===========================
-    st.subheader("📈 Gráfico de Frequência de Palavras (automático)")
+        resultados = buscar_stf(termo)
 
-    if "frequencia" in dados and dados["frequencia"]:
+        if not resultados:
+            st.warning("Nenhum resultado encontrado.")
+        else:
+            st.success(f"{len(resultados)} resultados encontrados!")
 
-        # Converte o dict em DataFrame
-        df = pd.DataFrame.from_dict(
-            dados["frequencia"], 
-            orient="index", 
-            columns=["Frequência"]
-        ).sort_values("Frequência", ascending=False)
+            # Exibir lista
+            for item in resultados[:10]:  # mostra só os 10 primeiros
+                st.markdown(f"""
+                ### {item.get('processo', 'Sem número')}
+                **Relator:** {item.get('relator', 'Não informado')}  
+                **Data:** {item.get('dataJulgamento', 'Sem data')}  
+                **Ementa:** {item.get('ementa', 'Sem ementa')}
+                ---
+                """)
 
-        st.bar_chart(df)
-    else:
-        st.write("Não foi possível gerar gráfico para este processo.")
+            # ------------------------------------------
+            # GRÁFICO OBRIGATÓRIO — Decisões por ano
+            # ------------------------------------------
+            anos = [
+                item.get("dataJulgamento", "0000")[:4]
+                for item in resultados
+                if item.get("dataJulgamento")
+            ]
+
+            df = pd.DataFrame(anos, columns=["ano"])
+            contagem = df["ano"].value_counts().sort_index()
+
+            st.subheader("Quantidade de decisões por ano")
+
+            fig, ax = plt.subplots()
+            contagem.plot(kind="bar", ax=ax)
+            ax.set_xlabel("Ano")
+            ax.set_ylabel("Quantidade de acórdãos")
+            ax.set_title("Distribuição anual das decisões encontradas")
+
+            st.pyplot(fig)
+
