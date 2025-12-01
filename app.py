@@ -1,50 +1,77 @@
 import streamlit as st
 import requests
 import pandas as pd
-import matplotlib.pyplot as plt
 
-st.title("🔎 Buscador de Leis e Normas – API LexML")
-st.write("Aplicação que consulta leis reais utilizando a API pública do LexML.")
+# ===========================
+# CONFIGURAÇÃO DA PÁGINA
+# ===========================
+st.set_page_config(page_title="Analisador de Processos", layout="centered")
+st.title("📄 Analisador Automático de Processos Jurídicos")
 
-# Função para consultar a API
-def buscar_lexml(consulta):
-    url = "https://www.lexml.gov.br/api/busca"
-    params = {"q": consulta, "formato": "json"}
+st.write("Cole o texto do processo e clique em **Analisar** para gerar um resumo automático e estatísticas.")
 
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        st.error(f"Erro ao consultar API: {e}")
-        return None
+# ===========================
+# INPUT DO USUÁRIO
+# ===========================
+processo_texto = st.text_area("Texto do processo:", height=300)
 
-# Interface
-tema = st.text_input("Digite um tema jurídico para buscar nas leis:", "")
+if st.button("Analisar"):
+    if not processo_texto.strip():
+        st.error("Por favor, cole o texto do processo.")
+        st.stop()
 
-if tema:
-    dados = buscar_lexml(tema)
+    with st.spinner("Analisando..."):
 
-    if dados and "resultado" in dados:
-        itens = dados["resultado"]["item"]
+        # ===========================
+        # CHAMADA À SUA API
+        # ===========================
+        try:
+            response = requests.post(
+                "http://localhost:8000/analisar",   # <<< SEU ENDPOINT FASTAPI
+                json={"texto": processo_texto}
+            )
 
-        if itens:
-            st.subheader("📄 Resultados encontrados:")
+        except Exception as e:
+            st.error("Erro ao conectar com a API.")
+            st.exception(e)
+            st.stop()
 
-            # Mostrar lista
-            for item in itens[:10]:
-                st.write(f"**{item['urn']}** — {item.get('titulo', 'Sem título')}")
+        if response.status_code != 200:
+            st.error("A API retornou um erro:")
+            st.write(response.text)
+            st.stop()
 
-            # Criar gráfico por tipo de documento
-            tipos = [item["tipo"] for item in itens]
+        dados = response.json()
 
-            df = pd.DataFrame({"tipo": tipos})
-            graf = df["tipo"].value_counts()
+    st.success("Análise concluída!")
 
-            st.subheader("📊 Distribuição por Tipo de Norma")
-            fig, ax = plt.subplots()
-            graf.plot(kind="bar", ax=ax)
-            st.pyplot(fig)
+    # ===========================
+    # EXIBE RESULTADO PRINCIPAL
+    # ===========================
+    st.subheader("📌 Resumo do Processo")
+    st.write(dados.get("resumo", "Sem resumo."))
 
-        else:
-            st.warning("Nenhuma norma encontrada para esse tema.")
+    st.subheader("📊 Pontos Principais Detectados")
+    if "topicos" in dados and dados["topicos"]:
+        for t in dados["topicos"]:
+            st.markdown(f"- {t}")
+    else:
+        st.write("Nenhum tópico detectado.")
+
+    # ===========================
+    # GRÁFICO AUTOMÁTICO
+    # ===========================
+    st.subheader("📈 Gráfico de Frequência de Palavras (automático)")
+
+    if "frequencia" in dados and dados["frequencia"]:
+
+        # Converte o dict em DataFrame
+        df = pd.DataFrame.from_dict(
+            dados["frequencia"], 
+            orient="index", 
+            columns=["Frequência"]
+        ).sort_values("Frequência", ascending=False)
+
+        st.bar_chart(df)
+    else:
+        st.write("Não foi possível gerar gráfico para este processo.")
