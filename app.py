@@ -1,48 +1,41 @@
-from flask import Flask, jsonify, request, render_template
-from models import db, Processo
-from services.consulta_service import consultar_andamentos
-import os
+import streamlit as st
+import pandas as pd
+import altair as alt
+from api_service import buscar_decisoes
 
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///processos.db'
-db.init_app(app)
+st.title("Consultor Jurídico com API Real (Brasil.io)")
+st.write("Aplicação conectada a uma API pública com dados jurídicos reais.")
 
-@app.before_request
-def create_tables():
-    if not hasattr(app, '_db_created'):
-        db.create_all()
-        app._db_created = True
+keyword = st.text_input("Digite uma palavra-chave para pesquisar decisões reais:")
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+if st.button("Buscar decisões"):
+    if keyword:
+        resposta = buscar_decisoes(keyword)
 
-@app.route('/api/processos', methods=['POST'])
-def cadastrar_processo():
-    data = request.get_json()
-    numero = data.get('numero')
-    tribunal = data.get('tribunal')
-    andamentos = consultar_andamentos(numero, tribunal)
+        if not resposta or len(resposta["results"]) == 0:
+            st.warning("Nenhuma decisão encontrada para essa busca.")
+        else:
+            df = pd.DataFrame(resposta["results"])
+            st.subheader("Resultados da API")
+            st.dataframe(df)
 
-    processo = Processo(numero=numero, tribunal=tribunal, andamentos=str(andamentos))
-    db.session.add(processo)
-    db.session.commit()
+            # Gera gráfico por tribunal
+            if "court" in df.columns:
+                st.subheader("Distribuição das decisões por tribunal")
+                chart = (
+                    alt.Chart(df)
+                    .mark_bar()
+                    .encode(
+                        x="court:N",
+                        y="count():Q",
+                        tooltip=["court", "count()"]
+                    )
+                )
+                st.altair_chart(chart, use_container_width=True)
 
-    return jsonify({'mensagem': 'Processo cadastrado com sucesso!', 'andamentos': andamentos})
-
-@app.route('/api/processos/<numero>', methods=['GET'])
-def listar_processo(numero):
-    processo = Processo.query.filter_by(numero=numero).first()
-    if not processo:
-        return jsonify({'erro': 'Processo não encontrado'}), 404
-    return jsonify({'numero': processo.numero, 'andamentos': processo.andamentos})
-
-@app.route('/api/consultar')
-def consultar():
-    numero = request.args.get('numero')
-    tribunal = request.args.get('tribunal', 'TJSP')
-    andamentos = consultar_andamentos(numero, tribunal)
-    return jsonify({'numero': numero, 'andamentos': andamentos})
-
-if __name__ == '__main__':
-    app.run(debug=True)
+            # Salva histórico
+            try:
+                df.to_csv("historico.csv", mode="a", index=False)
+                st.info("Histórico salvo (historico.csv).")
+            except:
+                st.error("Não foi possível salvar o histórico.")
